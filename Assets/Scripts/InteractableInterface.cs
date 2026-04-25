@@ -1,9 +1,9 @@
 using UnityEngine;
 public interface IInteractable
 {
-    Transform GrabPoint { get; }
+    public Transform grabPoint { get; }
     bool isGrabbed {get;set;}
-    void OnGrabbed();
-    
-    void OnReleased();
+    public void OnGrabbed();
+    public void Interact(float value);
+    public void OnReleased();
 }

@@ -1,62 +1,53 @@
-using System;
-using System.Collections;
-using Unity.Mathematics;
-using Unity.VisualScripting;
 using UnityEngine;
-using UnityEngine.Animations.Rigging;
+using UnityEngine.Events;
 
-public class LeverInteraction : MonoBehaviour
+public class LeverInteraction : MonoBehaviour, IInteractable
 {
-    [SerializeField] private AnimationClip leverAnimation;
-    [SerializeField] private AnimationClip interactionAnimation;
-    [SerializeField] private GameObject grabPoint;
-    [SerializeField] private Animator leverAnimator;
-    [SerializeField] private GameObject lever;
-    [SerializeField] private RigBuilder rigBuilder;
-    [SerializeField] private float targetRotation;
-    public InteractionAnimationHandler interactionAnimationHandler;
-    public ProceduralAnimationHandler ProceduralAnimationHandler;
-    public float sensitivity;
-    private Vector3 currentLeverRotation;
-    private bool isBusy;
+    [Header("Lever Setup")]
+    [SerializeField] private Transform leverTransform;
+    [SerializeField] private Transform leverGrabPoint;
+    [SerializeField] private float sensitivityMultiplier = 1f;
 
-    private void Awake()
+    [Header("Rotation Settings")]
+    [SerializeField] private Vector3 targetRotation;
+    [SerializeField] private Vector3 defaultRotation;
+
+    public UnityEvent onLeverFlipped;      
+    public UnityEvent onLeverUnflipped;  
+
+    public bool isGrabbed { get; set; }
+    public Transform grabPoint { get; set; }
+
+    private float leverValue = 0f;
+    private bool wasFullyFlipped = false;
+
+    void Awake()
     {
-        currentLeverRotation = lever.transform.localEulerAngles;
-       
-        Debug.Log("THIS HAPPENED");
-        
+        grabPoint = leverGrabPoint;
     }
 
-    private void Update()
-    {
-        lever.transform.localEulerAngles = new Vector3(lever.transform.localEulerAngles.x, lever.transform.localEulerAngles.y, Mathf.Lerp(currentLeverRotation.z, targetRotation, ProceduralAnimationHandler.totalDrag * sensitivity));
-    }
-    
+    public void OnGrabbed() => isGrabbed = true;
+    public void OnReleased() => isGrabbed = false;
 
-    private void OnDisable()
+    public void Interact(float delta)
     {
-        if (isBusy)
-            return;
-        
-        isBusy = true;
-        interactionAnimationHandler.leftHandTarget.SetActive(true);
-        interactionAnimationHandler.ikConstraint.data.target = grabPoint.transform;
-        rigBuilder.Build();
-        StartCoroutine(PreformInteraction());
-    }
+        leverValue += delta * sensitivityMultiplier;
+        leverValue = Mathf.Clamp01(leverValue);
 
-    IEnumerator PreformInteraction()
-    {
-        interactionAnimationHandler.animator.Play(interactionAnimation.name);
-        yield return new WaitForSeconds(interactionAnimation.length);
-        leverAnimator.Play(leverAnimation.name);
-        yield return new WaitForSeconds(leverAnimation.length);
-    }
-    
+        Quaternion startRot = Quaternion.Euler(defaultRotation);
+        Quaternion endRot = Quaternion.Euler(targetRotation);
 
-    void OnTriggerExit(Collider other)
-    {
-        interactionAnimationHandler = null;
+        leverTransform.localRotation =
+            Quaternion.Slerp(startRot, endRot, leverValue);
+
+        bool isFullyFlipped = leverValue >= 0.99f;
+
+        if (isFullyFlipped && !wasFullyFlipped)
+            onLeverFlipped?.Invoke();
+
+        if (!isFullyFlipped && wasFullyFlipped)
+            onLeverUnflipped?.Invoke();
+
+        wasFullyFlipped = isFullyFlipped;
     }
 }

@@ -5,54 +5,69 @@ using UnityEngine.Events;
 public class ProceduralAnimationHandler : MonoBehaviour
 {
     [SerializeField] private TwoBoneIKConstraint ikConstraint;
+    [SerializeField] private InteractableDetector interactableDetector;
+    [SerializeField] private float grabSpeed = 2f;
+    [SerializeField] private FirstPersonLook firstPersonLook;
+    [SerializeField] private FirstPersonMovement firstPersonMovement;
+    [SerializeField] private AnimationClip grabAnimation;
+    [SerializeField] private Animator animator;
+    
 
-    [SerializeField] private float grabSpeed = 2f; // higher = faster grab
-
-    public UnityEvent onGrabInteractable; 
-    public UnityEvent onReleaseInteractable; 
     private bool grabbedInteractable = false;
     private float currentWeight;
-    public float totalDrag; 
+    public float totalDrag;
+
+    float SpeedOverride() => 0;
 
     void Update()
     {
-        
-        
-        Debug.Log(grabbedInteractable);
-            
-        bool mouseHeld = Input.GetMouseButton(0);
-        
+        IInteractable interactable = interactableDetector.GetClosestInteractable();
 
-        if (mouseHeld)
-        {
-            totalDrag += Mathf.Abs(Input.mousePositionDelta.y);
-            Debug.Log(totalDrag );
-        }
-        else
-        {
-            totalDrag = 0;
-        }
+        if (interactable == null)
+            return;
+
+        ikConstraint.data.target.position = interactable.grabPoint.position;
+
+        bool mouseHeld = Input.GetMouseButton(0);
         bool reachable = IsTargetReachable();
 
         float targetWeight = (mouseHeld && reachable) ? 1f : 0f;
-        
-        currentWeight = Mathf.MoveTowards(
-            currentWeight,
-            targetWeight,
-            grabSpeed * Time.deltaTime
-        );
 
+       
+        currentWeight = Mathf.MoveTowards(currentWeight, targetWeight, grabSpeed * Time.deltaTime);
         ikConstraint.weight = currentWeight;
-        grabbedInteractable = ikConstraint.weight == 1;
+
+        bool wasGrabbed = grabbedInteractable;
+      
+        grabbedInteractable = currentWeight >= 0.99f;
+        
+        animator.SetFloat("Blend",  currentWeight);
+
+        if (grabbedInteractable && !wasGrabbed)
+        {
+            //animator.Play(grabAnimation.name);
+            interactable.OnGrabbed();
+            firstPersonLook.FocusOn(interactable.grabPoint);
+            if(firstPersonMovement.speedOverrides.Contains(SpeedOverride))
+            {
+                firstPersonMovement.speedOverrides.Add(SpeedOverride);
+            }
+        }
+        else if (!grabbedInteractable && wasGrabbed)
+        {
+            interactable.OnReleased();
+            firstPersonLook.StopFocus();
+            if(firstPersonMovement.speedOverrides.Contains(SpeedOverride))
+            {
+                firstPersonMovement.speedOverrides.Remove(SpeedOverride);
+            }
+        }
+        
         if (grabbedInteractable)
         {
-            onGrabInteractable.Invoke();
+            float mouseDeltaY = Input.GetAxis("Mouse Y");
+            interactable.Interact(-mouseDeltaY);
         }
-        else
-        {
-            onReleaseInteractable.Invoke();
-        }
-
     }
 
     bool IsTargetReachable()
